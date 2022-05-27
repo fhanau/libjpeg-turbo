@@ -948,6 +948,16 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
     others[i] = -1;             /* init links to empty */
 
   freq[256] = 1;                /* make sure 256 has a nonzero count */
+
+  int indices [257];
+  int num_symbols = 0;
+  for (i = 0; i < 257; i++) {
+    if (freq[i]) {
+      indices[num_symbols] = i;
+      freq[num_symbols] = freq[i];
+      num_symbols++;
+    }
+  }
   /* Including the pseudo-symbol 256 in the Huffman procedure guarantees
    * that no real symbol is given code-value of all ones, because 256
    * will be placed last in the largest codeword category.
@@ -962,8 +972,8 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
     c2 = -1;
     v = 1000000000L;
     v2 = 1000000000L;
-    for (i = 0; i <= 256; i++) {
-      if (freq[i] && freq[i] <= v2) {
+    for (i = 0; i < num_symbols; i++) {
+      if (freq[i] <= v2) {
         if (freq[i] <= v) {
           c2 = c1;
           v2 = v;
@@ -982,7 +992,9 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
 
     /* Else merge the two counts/trees */
     freq[c1] += freq[c2];
-    freq[c2] = 0;
+    freq[c2] = 1000000001L;
+    c1 = indices[c1];
+    c2 = indices[c2];
 
     /* Increment the codesize of everything in c1's tree branch */
     codesize[c1]++;
@@ -1002,15 +1014,13 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
   }
 
   /* Now count the number of symbols of each code length */
-  for (i = 0; i <= 256; i++) {
-    if (codesize[i]) {
-      /* The JPEG standard seems to think that this can't happen, */
-      /* but I'm paranoid... */
-      if (codesize[i] > MAX_CLEN)
-        ERREXIT(cinfo, JERR_HUFF_CLEN_OVERFLOW);
+  for (i = 0; i < num_symbols; i++) {
+    /* The JPEG standard seems to think that this can't happen, */
+    /* but I'm paranoid... */
+    if (codesize[indices[i]] > MAX_CLEN)
+      ERREXIT(cinfo, JERR_HUFF_CLEN_OVERFLOW);
 
-      bits[codesize[i]]++;
-    }
+    bits[codesize[indices[i]]]++;
   }
 
   /* Count the number of symbols with a length smaller than i bits so we can
@@ -1061,11 +1071,9 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
    * changes made above, but Rec. ITU-T T.81 | ISO/IEC 10918-1 seems to think
    * this works.
    */
-  for (i = 0; i <= 255; i++) {
-    if (codesize[i]) {
-      htbl->huffval[bit_pos[codesize[i]]] = (UINT8)i;
-      bit_pos[codesize[i]]++;
-    }
+  for (i = 0; i < num_symbols - 1; i++) {
+    htbl->huffval[bit_pos[codesize[indices[i]]]] = (UINT8)indices[i];
+    bit_pos[codesize[indices[i]]]++;
   }
 
   /* Set sent_table FALSE so updated table will be written to JPEG file. */
