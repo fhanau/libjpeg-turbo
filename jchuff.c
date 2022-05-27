@@ -993,8 +993,6 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
     /* Else merge the two counts/trees */
     freq[c1] += freq[c2];
     freq[c2] = 1000000001L;
-    c1 = indices[c1];
-    c2 = indices[c2];
 
     /* Increment the codesize of everything in c1's tree branch */
     codesize[c1]++;
@@ -1017,10 +1015,10 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
   for (i = 0; i < num_symbols; i++) {
     /* The JPEG standard seems to think that this can't happen, */
     /* but I'm paranoid... */
-    if (codesize[indices[i]] > MAX_CLEN)
+    if (codesize[i] > MAX_CLEN)
       ERREXIT(cinfo, JERR_HUFF_CLEN_OVERFLOW);
 
-    bits[codesize[indices[i]]]++;
+    bits[codesize[i]]++;
   }
 
   /* Count the number of symbols with a length smaller than i bits so we can
@@ -1072,8 +1070,8 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
    * this works.
    */
   for (i = 0; i < num_symbols - 1; i++) {
-    htbl->huffval[bit_pos[codesize[indices[i]]]] = (UINT8)indices[i];
-    bit_pos[codesize[indices[i]]]++;
+    htbl->huffval[bit_pos[codesize[i]]] = (UINT8)indices[i];
+    bit_pos[codesize[i]]++;
   }
 
   /* Set sent_table FALSE so updated table will be written to JPEG file. */
