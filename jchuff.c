@@ -933,26 +933,32 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
 {
 #define MAX_CLEN  32            /* assumed maximum initial code length */
   UINT8 bits[MAX_CLEN + 1];     /* bits[k] = # of symbols with code length k */
+  boolean added_symbol[257];    /* indicates if symbol is present in huffval */
   int codesize[257];            /* codesize[k] = code length of symbol k */
+  int indices [257];            /* index of symbol relative to shifted index */
   int others[257];              /* next symbol in current branch of tree */
   int c1, c2;
   int p, i, j;
+  int num_symbols;
   long v, v2;
-  UINT8 has_added_symbol[257];
 
   /* This algorithm is explained in section K.2 of the JPEG standard */
 
   memset(bits, 0, sizeof(bits));
-  memset(has_added_symbol, 0, sizeof(has_added_symbol));
+  memset(added_symbol, 0, sizeof(added_symbol));
   memset(codesize, 0, sizeof(codesize));
   for (i = 0; i < 257; i++)
     others[i] = -1;             /* init links to empty */
 
   freq[256] = 1;                /* make sure 256 has a nonzero count */
-  has_added_symbol[256] = 1;
+  added_symbol[256] = 1;
+  /* Including the pseudo-symbol 256 in the Huffman procedure guarantees
+   * that no real symbol is given code-value of all ones, because 256
+   * will be placed last in the largest codeword category.
+   */
 
-  int indices [257];
-  int num_symbols = 0;
+  /* Put nonzero frequencies together so to more easily find the smallest. */
+  num_symbols = 0;
   for (i = 0; i < 257; i++) {
     if (freq[i]) {
       indices[num_symbols] = i;
@@ -960,16 +966,24 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
       num_symbols++;
     }
   }
-  /* Including the pseudo-symbol 256 in the Huffman procedure guarantees
-   * that no real symbol is given code-value of all ones, because 256
-   * will be placed last in the largest codeword category.
+  /* We can construct the huffval table independently from the bit lengths.
+   * As we go through the symbols ordered by increasing frequency, put them
+   * in the huffval table in reverse order so that the most common symbols have
+   * the shortest code, even after fixing the lengths below, which slightly
+   * improves compression compared to constructing the table based on the non-
+   * corrected code lengths.
+   * This approach is inspired by the implementation in libjpeg 9d as suggested
+   * by John Korejwa, which uses a different approach to reach the same huffval
+   * order.
    */
+  p = num_symbols - 2;
 
   /* Huffman's basic algorithm to assign optimal code lengths to symbols */
-  p = num_symbols - 2;
+
   for (;;) {
     /* Find the two smallest nonzero frequencies, set c1, c2 = its symbols */
-    /* In case of ties, take the larger symbol number */
+    /* In case of ties, take the larger symbol number. Since we have moved the
+     * nonzero symbols together, checking for zero symbols is not necessary. */
     c1 = -1;
     c2 = -1;
     v = 1000000000L;
@@ -992,19 +1006,23 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
     if (c2 < 0)
       break;
 
-    if (has_added_symbol[indices[c1]] == 0) {
-      has_added_symbol[indices[c1]] = 1;
+    /* If the symbol is not present (i.e. has not been added and merged), add
+     * it in the huffval table so the symbols are sorted by decreasing frequency. */
+    if (!added_symbol[indices[c1]]) {
+      added_symbol[indices[c1]] = TRUE;
       htbl->huffval[p] = indices[c1];
       p--;
     }
-    if (has_added_symbol[indices[c2]] == 0) {
-      has_added_symbol[indices[c2]] = 1;
+    if (!added_symbol[indices[c2]]) {
+      added_symbol[indices[c2]] = TRUE;
       htbl->huffval[p] = indices[c2];
       p--;
     }
 
     /* Else merge the two counts/trees */
     freq[c1] += freq[c2];
+    /* Set the frequency to a very high value instead of zero so we don't have
+     * to check for zero values. */
     freq[c2] = 1000000001L;
 
     /* Increment the codesize of everything in c1's tree branch */
