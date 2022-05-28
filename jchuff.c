@@ -935,9 +935,11 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
   UINT8 bits[MAX_CLEN + 1];     /* bits[k] = # of symbols with code length k */
   int bit_pos[MAX_CLEN + 1];    /* # of symbols with smaller code length */
   int codesize[257];            /* codesize[k] = code length of symbol k */
+  int indices [257];            /* index of symbol relative to shifted index */
   int others[257];              /* next symbol in current branch of tree */
   int c1, c2;
   int p, i, j;
+  int num_symbols;
   long v, v2;
 
   /* This algorithm is explained in section K.2 of the JPEG standard */
@@ -948,9 +950,13 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
     others[i] = -1;             /* init links to empty */
 
   freq[256] = 1;                /* make sure 256 has a nonzero count */
+  /* Including the pseudo-symbol 256 in the Huffman procedure guarantees
+   * that no real symbol is given code-value of all ones, because 256
+   * will be placed last in the largest codeword category.
+   */
 
-  int indices [257];
-  int num_symbols = 0;
+  /* Put nonzero frequencies together so to more easily find the smallest. */
+  num_symbols = 0;
   for (i = 0; i < 257; i++) {
     if (freq[i]) {
       indices[num_symbols] = i;
@@ -958,16 +964,13 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
       num_symbols++;
     }
   }
-  /* Including the pseudo-symbol 256 in the Huffman procedure guarantees
-   * that no real symbol is given code-value of all ones, because 256
-   * will be placed last in the largest codeword category.
-   */
 
   /* Huffman's basic algorithm to assign optimal code lengths to symbols */
 
   for (;;) {
     /* Find the two smallest nonzero frequencies, set c1, c2 = its symbols */
-    /* In case of ties, take the larger symbol number */
+    /* In case of ties, take the larger symbol number. Since we have moved the
+     * nonzero symbols together, checking for zero symbols is not necessary. */
     c1 = -1;
     c2 = -1;
     v = 1000000000L;
@@ -992,6 +995,8 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
 
     /* Else merge the two counts/trees */
     freq[c1] += freq[c2];
+    /* Set the frequency to a very high value instead of zero so we don't have
+     * to check for zero values. */
     freq[c2] = 1000000001L;
 
     /* Increment the codesize of everything in c1's tree branch */
